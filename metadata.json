@@ -1,0 +1,5 @@
+{
+  "name": "FlightTracker",
+  "description": "Real-time flight tracking for arrivals at Zurich Airport (ZRH) within the next 2 hours using the Aviation Stack API.",
+  "requestFramePermissions": []
+}
