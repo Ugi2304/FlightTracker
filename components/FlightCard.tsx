@@ -13,14 +13,14 @@ const FlightCard: React.FC<Props> = ({ flight }) => {
     : new Date(flight.arrival.scheduled).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200 hover:border-blue-200">
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center space-x-2">
-           <div className="bg-red-50 p-2 rounded-lg">
-             <Plane className="w-5 h-5 text-red-600 transform rotate-90" />
+           <div className="bg-blue-50 p-2 rounded-lg">
+             <Plane className="w-5 h-5 text-[#0b1c3e] transform rotate-90" />
            </div>
            <div>
-             <h3 className="font-bold text-gray-900 text-lg">{flight.flight.iata || flight.flight.number}</h3>
+             <h3 className="font-bold text-[#0b1c3e] text-lg">{flight.flight.iata || flight.flight.number}</h3>
              <p className="text-xs text-gray-500">
                {flight.airline.name}
                {flight.airline.iata && <span className="ml-1 text-gray-400 font-mono">({flight.airline.iata})</span>}

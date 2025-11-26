@@ -1,5 +1,5 @@
 {
-  "name": "FlightTracker",
-  "description": "Real-time flight tracking for arrivals at Zurich Airport (ZRH) within the next 2 hours using the Aviation Stack API.",
+  "name": "UGI FlightTracker",
+  "description": "Real-time flight tracking for Zurich Airport (ZRH) powered by Flightradar24 data.",
   "requestFramePermissions": []
 }
