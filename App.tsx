@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { fetchArrivals } from './services/aviationService';
+import { fetchFlights } from './services/aviationService';
 import { FlightData } from './types';
 import FlightCard from './components/FlightCard';
 import FlightStatusBadge from './components/FlightStatusBadge';
-import { Plane, RefreshCw, AlertTriangle, Info, Search, List as ListIcon } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Info, Search, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 const App: React.FC = () => {
   // Store raw data from API
@@ -12,19 +12,20 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [timeRange, setTimeRange] = useState<number>(2); // Default to 2 hours initially
+  const [timeRange, setTimeRange] = useState<number>(1); // Default to 1 hour
+  const [mode, setMode] = useState<'arrivals' | 'departures'>('arrivals');
   
   // Use a ref to track if the initial load has completed.
   const hasLoadedRef = useRef(false);
 
   const loadFlights = useCallback(async () => {
-    // Only show full loading spinner on the very first load
+    // Only show full loading spinner on the very first load or when switching modes manually
     if (!hasLoadedRef.current) {
       setLoading(true);
     }
     setError(null);
     try {
-      const data = await fetchArrivals();
+      const data = await fetchFlights(mode);
       setAllFlights(data);
       setLastUpdated(new Date());
       hasLoadedRef.current = true;
@@ -34,12 +35,19 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
+    // Reset loaded ref when mode changes to trigger loading state
+    hasLoadedRef.current = false;
     loadFlights();
+    
     // Set up auto-refresh every 60 seconds
-    const interval = setInterval(loadFlights, 60000);
+    const interval = setInterval(() => {
+        // We don't reset hasLoadedRef here to avoid spinner on auto-refresh
+        hasLoadedRef.current = true; 
+        loadFlights();
+    }, 60000);
     return () => clearInterval(interval);
   }, [loadFlights]);
 
@@ -50,21 +58,25 @@ const App: React.FC = () => {
     const now = new Date();
     // Calculate the cut-off time based on selected range
     const rangeEnd = new Date(now.getTime() + timeRange * 60 * 60 * 1000);
-    // Include flights that landed up to 60 mins ago for context
+    // Include flights that were relevant up to 60 mins ago for context
     const rangeStart = new Date(now.getTime() - 60 * 60 * 1000); 
 
     let filtered = allFlights.filter(flight => {
-      const timeRef = flight.arrival.estimated || flight.arrival.scheduled;
+      // Choose reference time based on mode
+      const timeRef = mode === 'arrivals' 
+        ? (flight.arrival.estimated || flight.arrival.scheduled)
+        : (flight.departure.estimated || flight.departure.scheduled);
+
       if (!timeRef) return false;
       
-      const arrivalTime = new Date(timeRef);
-      return arrivalTime >= rangeStart && arrivalTime <= rangeEnd;
+      const flightTime = new Date(timeRef);
+      return flightTime >= rangeStart && flightTime <= rangeEnd;
     });
 
     // Sort by time ascending (sooner first)
     filtered.sort((a, b) => {
-      const timeA = new Date(a.arrival.estimated || a.arrival.scheduled).getTime();
-      const timeB = new Date(b.arrival.estimated || b.arrival.scheduled).getTime();
+      const timeA = new Date(mode === 'arrivals' ? (a.arrival.estimated || a.arrival.scheduled) : (a.departure.estimated || a.departure.scheduled)).getTime();
+      const timeB = new Date(mode === 'arrivals' ? (b.arrival.estimated || b.arrival.scheduled) : (b.departure.estimated || b.departure.scheduled)).getTime();
       return timeA - timeB;
     });
 
@@ -75,12 +87,15 @@ const App: React.FC = () => {
         (f.flight.iata || '').toLowerCase().includes(search) ||
         (f.flight.number || '').toLowerCase().includes(search) ||
         (f.departure.airport || '').toLowerCase().includes(search) ||
+        (f.arrival.airport || '').toLowerCase().includes(search) ||
         (f.airline.name || '').toLowerCase().includes(search)
       );
     }
 
     return filtered;
-  }, [allFlights, timeRange, searchTerm]);
+  }, [allFlights, timeRange, searchTerm, mode]);
+
+  const isDeparture = mode === 'departures';
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 font-sans">
@@ -91,8 +106,7 @@ const App: React.FC = () => {
             {/* Custom Logo Icon */}
             <div className="w-10 h-10 relative flex-shrink-0">
               <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-md" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Background */}
-                <rect width="100" height="100" rx="24" fill="#1e3a8a" /> {/* Slightly lighter blue than header for contrast */}
+                <rect width="100" height="100" rx="24" fill="#1e3a8a" />
                 <rect width="100" height="100" rx="24" fill="url(#grad1)" fillOpacity="0.4" />
                 <defs>
                    <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -100,15 +114,9 @@ const App: React.FC = () => {
                      <stop offset="100%" stopColor="#1e3a8a" stopOpacity="0" />
                    </linearGradient>
                 </defs>
-
-                {/* Plane */}
                 <path d="M50 15C52.2 15 54 16.8 54 19V34L78 44V49L54 41V58L62 64V68L50 64L38 68V64L46 58V41L22 49V44L46 34V19C46 16.8 47.8 15 50 15Z" fill="white"/>
-                
-                {/* Radar Waves */}
                 <path d="M30 72C30 72 40 64 50 64C60 64 70 72 70 72" stroke="#93c5fd" strokeWidth="4" strokeLinecap="round"/>
                 <path d="M38 78C38 78 44 73 50 73C56 73 62 78 62 78" stroke="#93c5fd" strokeWidth="4" strokeLinecap="round"/>
-                
-                {/* Radar Base */}
                 <path d="M46 86H54L50 80L46 86Z" fill="white"/>
                 <circle cx="50" cy="88" r="3" fill="white"/>
               </svg>
@@ -126,7 +134,7 @@ const App: React.FC = () => {
                 </p>
              </div>
              <button 
-               onClick={loadFlights}
+               onClick={() => { hasLoadedRef.current = false; loadFlights(); }}
                disabled={loading}
                className={`p-2 rounded-full hover:bg-blue-900 transition-all ${loading ? 'animate-spin text-yellow-400' : 'text-blue-200 hover:text-white'}`}
                title="Refresh Data"
@@ -144,8 +152,34 @@ const App: React.FC = () => {
         <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-6 justify-between">
           
           <div className="flex flex-col md:flex-row gap-4">
+             {/* Arrivals / Departures Switch */}
+             <div className="bg-gray-200 p-1 rounded-lg flex shadow-inner">
+                <button
+                  onClick={() => setMode('arrivals')}
+                  className={`flex items-center px-4 py-2 rounded-md text-sm font-semibold transition-all ${
+                    mode === 'arrivals' 
+                    ? 'bg-[#0b1c3e] text-white shadow-sm' 
+                    : 'text-gray-600 hover:bg-gray-300'
+                  }`}
+                >
+                  <ArrowDownRight className={`w-4 h-4 mr-2 ${mode === 'arrivals' ? 'text-green-400' : 'text-gray-500'}`} />
+                  Arrivals
+                </button>
+                <button
+                  onClick={() => setMode('departures')}
+                  className={`flex items-center px-4 py-2 rounded-md text-sm font-semibold transition-all ${
+                    mode === 'departures' 
+                    ? 'bg-[#0b1c3e] text-white shadow-sm' 
+                    : 'text-gray-600 hover:bg-gray-300'
+                  }`}
+                >
+                  <ArrowUpRight className={`w-4 h-4 mr-2 ${mode === 'departures' ? 'text-yellow-400' : 'text-gray-500'}`} />
+                  Departures
+                </button>
+             </div>
+
             {/* Time Range Buttons */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 justify-center">
               <div className="flex flex-wrap gap-2">
                 {[1, 3, 5].map((hours) => (
                   <button
@@ -157,15 +191,10 @@ const App: React.FC = () => {
                         : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                     }`}
                   >
-                    Next {hours} {hours === 1 ? 'Hour' : 'Hours'}
+                    +{hours} {hours === 1 ? 'Hour' : 'Hours'}
                   </button>
                 ))}
               </div>
-              {displayedFlights.length > 0 && (
-                <p className="text-xs text-gray-500 ml-1">
-                  Showing {displayedFlights.length} flights within {timeRange} hour{timeRange > 1 ? 's' : ''}
-                </p>
-              )}
             </div>
           </div>
 
@@ -183,6 +212,13 @@ const App: React.FC = () => {
               />
           </div>
         </div>
+
+        {/* Info Text */}
+        {displayedFlights.length > 0 && (
+           <p className="text-xs text-gray-500 mb-4 ml-1">
+              Showing {displayedFlights.length} {mode} within the selected time range
+           </p>
+        )}
 
         {/* Error State */}
         {error && (
@@ -212,7 +248,7 @@ const App: React.FC = () => {
               </div>
               <h3 className="text-lg font-medium text-gray-900">No flights found</h3>
               <p className="text-gray-500 mt-1">
-                There are no flights arriving in the next {timeRange} hours matching your criteria.
+                There are no {mode} in the next {timeRange} hours matching your criteria.
               </p>
            </div>
         )}
@@ -223,7 +259,11 @@ const App: React.FC = () => {
             {/* Grid View (Mobile/Tablet) */}
             <div className="block lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">
               {displayedFlights.map((flight, idx) => (
-                <FlightCard key={`${flight.flight.iata}-${idx}`} flight={flight} />
+                <FlightCard 
+                  key={`${flight.flight.iata}-${idx}`} 
+                  flight={flight} 
+                  isDeparture={isDeparture} 
+                />
               ))}
             </div>
 
@@ -235,7 +275,9 @@ const App: React.FC = () => {
                     <tr>
                       <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Time</th>
                       <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Flight</th>
-                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Origin</th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                         {isDeparture ? 'Destination' : 'Origin'}
+                      </th>
                       <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Airline</th>
                       <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Aircraft</th>
                       <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -243,16 +285,19 @@ const App: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {displayedFlights.map((flight, idx) => {
-                       const timeStr = flight.arrival.estimated 
-                         ? new Date(flight.arrival.estimated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                         : new Date(flight.arrival.scheduled).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                       const scheduledTime = isDeparture ? flight.departure.scheduled : flight.arrival.scheduled;
+                       const estimatedTime = isDeparture ? flight.departure.estimated : flight.arrival.estimated;
+                       
+                       const timeStr = estimatedTime 
+                         ? new Date(estimatedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                         : new Date(scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                        
                        return (
                         <tr key={`${flight.flight.iata}-${idx}`} className="hover:bg-blue-50 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-bold font-mono text-gray-900">{timeStr}</div>
                             <div className="text-xs text-gray-400">
-                              {new Date(flight.arrival.scheduled).toLocaleDateString([], {month: 'short', day: 'numeric'})}
+                              {new Date(scheduledTime).toLocaleDateString([], {month: 'short', day: 'numeric'})}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -261,7 +306,9 @@ const App: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900 font-medium">{flight.departure.airport || 'Unknown'}</div>
+                            <div className="text-sm text-gray-900 font-medium">
+                                {isDeparture ? (flight.arrival.airport || 'Unknown') : (flight.departure.airport || 'Unknown')}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">{flight.airline.name}</div>
@@ -271,7 +318,10 @@ const App: React.FC = () => {
                             {flight.aircraft?.iata || flight.aircraft?.icao || '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <FlightStatusBadge status={flight.flight_status} delay={flight.arrival.delay} />
+                            <FlightStatusBadge 
+                                status={flight.flight_status} 
+                                delay={isDeparture ? flight.departure.delay : flight.arrival.delay} 
+                            />
                           </td>
                         </tr>
                        );
@@ -284,7 +334,7 @@ const App: React.FC = () => {
         )}
         
         <div className="mt-6 text-center">
-           <p className="text-xs text-gray-400">Data Source: Flightradar24. Live tracking estimates provided by simulation based on supplied credentials.</p>
+           <p className="text-xs text-gray-400">Data Source: Flightradar24 (via Proxy). Real-time data subject to availability.</p>
         </div>
 
       </main>

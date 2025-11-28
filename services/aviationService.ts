@@ -1,14 +1,14 @@
 import { FlightData, FlightStatus } from '../types';
 
-export const fetchArrivals = async (): Promise<FlightData[]> => {
-  console.log('Fetching real flight data from Flightradar24...');
+export const fetchFlights = async (mode: 'arrivals' | 'departures'): Promise<FlightData[]> => {
+  console.log(`Fetching real ${mode} data from Flightradar24...`);
 
   try {
     // We use a CORS proxy to access the public endpoint used by web clients.
     // This provides real-time schedule and status data for Zurich (ZRH).
     const PROXY_URL = 'https://corsproxy.io/?';
     // The timestamp ensures we get fresh data and don't hit cache
-    const TARGET_URL = `https://api.flightradar24.com/common/v1/airport.json?code=zrh&page=1&limit=100&plugin[]=&plugin-setting[schedule][mode]=arrivals&timestamp=${Date.now()}`;
+    const TARGET_URL = `https://api.flightradar24.com/common/v1/airport.json?code=zrh&page=1&limit=100&plugin[]=&plugin-setting[schedule][mode]=${mode}&timestamp=${Date.now()}`;
     
     const response = await fetch(PROXY_URL + encodeURIComponent(TARGET_URL));
 
@@ -18,15 +18,15 @@ export const fetchArrivals = async (): Promise<FlightData[]> => {
 
     const data = await response.json();
     
-    // Navigate the specific FR24 JSON structure
-    const arrivals = data?.result?.response?.airport?.pluginData?.schedule?.arrivals?.data;
+    // Navigate the specific FR24 JSON structure based on mode
+    const flightList = data?.result?.response?.airport?.pluginData?.schedule?.[mode]?.data;
 
-    if (!arrivals || !Array.isArray(arrivals)) {
+    if (!flightList || !Array.isArray(flightList)) {
        console.error('Unexpected API response structure:', data);
        throw new Error('Received invalid data format from flight provider');
     }
 
-    return arrivals.map((item: any) => {
+    return flightList.map((item: any) => {
       const f = item.flight;
       
       // Map FR24 status text to our internal enum
@@ -36,26 +36,39 @@ export const fetchArrivals = async (): Promise<FlightData[]> => {
       if (rawStatus.includes('landed')) statusStr = FlightStatus.LANDED;
       else if (rawStatus.includes('cancelled')) statusStr = FlightStatus.CANCELLED;
       else if (rawStatus.includes('diverted')) statusStr = FlightStatus.DIVERTED;
-      else if (rawStatus.includes('estimated') || rawStatus.includes('delayed') || rawStatus.includes('active')) statusStr = FlightStatus.ACTIVE;
+      else if (rawStatus.includes('estimated') || rawStatus.includes('delayed') || rawStatus.includes('active') || rawStatus.includes('departed')) statusStr = FlightStatus.ACTIVE;
       
-      // Timestamps from API are in seconds, convert to ms
+      // ARRIVAL TIMES
       const scheduledArr = (f.time?.scheduled?.arrival || 0) * 1000;
       const estimatedArr = (f.time?.estimated?.arrival || f.time?.other?.eta || scheduledArr) * 1000;
       const actualArr = f.time?.real?.arrival ? f.time.real.arrival * 1000 : null;
       
-      // Calculate Delay (if estimated is later than scheduled)
-      const delayMinutes = (estimatedArr > scheduledArr) 
+      // DEPARTURE TIMES
+      const scheduledDep = (f.time?.scheduled?.departure || 0) * 1000;
+      const estimatedDep = (f.time?.estimated?.departure || scheduledDep) * 1000;
+      const actualDep = f.time?.real?.departure ? f.time.real.departure * 1000 : null;
+
+      // Calculate Arrival Delay (if estimated is later than scheduled)
+      const delayArrMinutes = (estimatedArr > scheduledArr) 
         ? Math.round((estimatedArr - scheduledArr) / 60000) 
         : null;
 
-      // Prioritize City Name for Origin (e.g. "Barcelona" instead of "BCN")
-      // Structure: airport -> origin -> position -> region -> city
+      // Calculate Departure Delay
+      const delayDepMinutes = (estimatedDep > scheduledDep) 
+        ? Math.round((estimatedDep - scheduledDep) / 60000) 
+        : null;
+
+      // Prioritize City Name for Origin & Destination
       const originName = f.airport?.origin?.position?.region?.city 
         || f.airport?.origin?.name 
         || f.airport?.origin?.code?.iata;
+        
+      const destName = f.airport?.destination?.position?.region?.city 
+        || f.airport?.destination?.name 
+        || f.airport?.destination?.code?.iata;
 
       return {
-        flight_date: new Date(scheduledArr).toISOString().split('T')[0],
+        flight_date: new Date(scheduledDep || scheduledArr).toISOString().split('T')[0],
         flight_status: statusStr,
         departure: {
           airport: originName || 'Unknown Origin',
@@ -64,22 +77,22 @@ export const fetchArrivals = async (): Promise<FlightData[]> => {
           icao: f.airport?.origin?.code?.icao || '',
           terminal: f.airport?.origin?.info?.terminal || null,
           gate: f.airport?.origin?.info?.gate || null,
-          delay: null, 
-          scheduled: new Date((f.time?.scheduled?.departure || 0) * 1000).toISOString(),
-          estimated: new Date((f.time?.estimated?.departure || 0) * 1000).toISOString(),
-          actual: f.time?.real?.departure ? new Date(f.time.real.departure * 1000).toISOString() : null,
+          delay: delayDepMinutes, 
+          scheduled: new Date(scheduledDep).toISOString(),
+          estimated: new Date(estimatedDep).toISOString(),
+          actual: actualDep ? new Date(actualDep).toISOString() : null,
           estimated_runway: null,
           actual_runway: null
         },
         arrival: {
-          airport: 'Zurich',
-          timezone: 'Europe/Zurich',
-          iata: 'ZRH',
-          icao: 'LSZH',
+          airport: destName || 'Unknown Destination',
+          timezone: f.airport?.destination?.timezone?.name || 'UTC',
+          iata: f.airport?.destination?.code?.iata || '',
+          icao: f.airport?.destination?.code?.icao || '',
           terminal: f.airport?.destination?.info?.terminal || null,
           gate: f.airport?.destination?.info?.gate || null,
           baggage: f.airport?.destination?.info?.baggage || null,
-          delay: delayMinutes,
+          delay: delayArrMinutes,
           scheduled: new Date(scheduledArr).toISOString(),
           estimated: new Date(estimatedArr).toISOString(),
           actual: actualArr ? new Date(actualArr).toISOString() : null,
