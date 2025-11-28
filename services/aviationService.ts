@@ -33,10 +33,36 @@ export const fetchFlights = async (mode: 'arrivals' | 'departures'): Promise<Fli
       let statusStr = FlightStatus.SCHEDULED;
       const rawStatus = (f.status?.text || '').toLowerCase();
       
-      if (rawStatus.includes('landed')) statusStr = FlightStatus.LANDED;
-      else if (rawStatus.includes('cancelled')) statusStr = FlightStatus.CANCELLED;
-      else if (rawStatus.includes('diverted')) statusStr = FlightStatus.DIVERTED;
-      else if (rawStatus.includes('estimated') || rawStatus.includes('delayed') || rawStatus.includes('active') || rawStatus.includes('departed')) statusStr = FlightStatus.ACTIVE;
+      // Universal statuses
+      if (rawStatus.includes('landed')) {
+        statusStr = FlightStatus.LANDED;
+      } else if (rawStatus.includes('cancelled')) {
+        statusStr = FlightStatus.CANCELLED;
+      } else if (rawStatus.includes('diverted')) {
+        statusStr = FlightStatus.DIVERTED;
+      } 
+      // Specific logic based on mode
+      else if (mode === 'departures') {
+         if (rawStatus.includes('boarding') || rawStatus.includes('gate') || rawStatus.includes('go to') || rawStatus.includes('final call')) {
+           statusStr = FlightStatus.BOARDING;
+         } else if (rawStatus.includes('departed')) {
+           statusStr = FlightStatus.ACTIVE;
+         } else if (rawStatus.includes('estimated') || rawStatus.includes('delayed')) {
+           // For departures, estimated means it hasn't left yet
+           statusStr = FlightStatus.ON_GROUND;
+         } else {
+           // Default fallback (e.g. "Scheduled")
+           statusStr = FlightStatus.SCHEDULED;
+         }
+      } else {
+         // Arrivals logic
+         if (rawStatus.includes('estimated') || rawStatus.includes('delayed') || rawStatus.includes('active') || rawStatus.includes('departed')) {
+           // For arrivals, "Estimated" usually means it is en route
+           statusStr = FlightStatus.ACTIVE;
+         } else {
+           statusStr = FlightStatus.SCHEDULED;
+         }
+      }
       
       // ARRIVAL TIMES
       const scheduledArr = (f.time?.scheduled?.arrival || 0) * 1000;

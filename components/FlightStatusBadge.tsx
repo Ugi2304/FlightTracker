@@ -29,10 +29,18 @@ const FlightStatusBadge: React.FC<Props> = ({ status, delay }) => {
     bgColor = 'bg-yellow-50'; // FR24 Yellow tint
     textColor = 'text-yellow-700';
     label = 'Scheduled';
+  } else if (normalizedStatus === FlightStatus.BOARDING) {
+    bgColor = 'bg-amber-100';
+    textColor = 'text-amber-800';
+    label = 'Boarding';
+  } else if (normalizedStatus === FlightStatus.ON_GROUND) {
+    bgColor = 'bg-slate-100';
+    textColor = 'text-slate-700';
+    label = 'On Ground';
   }
 
   // Override for delay
-  if (delay && delay > 15 && normalizedStatus !== FlightStatus.CANCELLED && normalizedStatus !== FlightStatus.LANDED) {
+  if (delay && delay > 15 && normalizedStatus !== FlightStatus.CANCELLED && normalizedStatus !== FlightStatus.LANDED && normalizedStatus !== FlightStatus.DIVERTED) {
      bgColor = 'bg-red-50';
      textColor = 'text-red-700';
      label = `Delayed (+${delay}m)`;

@@ -76,4 +76,6 @@ export enum FlightStatus {
   CANCELLED = 'cancelled',
   INCIDENT = 'incident',
   DIVERTED = 'diverted',
+  BOARDING = 'boarding',
+  ON_GROUND = 'on_ground',
 }
